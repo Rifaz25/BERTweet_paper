@@ -1,6 +1,6 @@
 # BERTweet_paper
 # ─────────────────────────────────────────────────────────
-# CELL 3: Imports and Global Settings
+# Imports and Global Settings
 # ─────────────────────────────────────────────────────────
 import os, re, json, pickle, warnings
 import numpy as np
