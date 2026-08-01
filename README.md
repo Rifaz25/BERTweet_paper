@@ -552,3 +552,63 @@ for class_idx, class_name in enumerate(CLASS_NAMES):
     
 
 print("\nDone!")
+def build_dual_head_model(input_dim):
+    # Input Layer (Fused BERT & BERTweet features)
+    inputs = Input(shape=(input_dim,), name='fused_features')
+
+    # Stacking Meta-Classifier (MLP Layer with Dropout)
+    x = Dense(512, activation='relu', name='mlp_dense_1')(inputs)
+    x = Dropout(0.3, name='dropout_1')(x)
+    x = Dense(256, activation='relu', name='mlp_dense_2')(x)
+    x = Dropout(0.2, name='dropout_2')(x)
+
+    # --- Head 1: Category Prediction (5 Classes) ---
+    category_out = Dense(5, activation='softmax', name='category_head')(x)
+
+    # --- Head 2: Severity Assessment (3 Classes) ---
+    severity_out = Dense(3, activation='softmax', name='severity_head')(x)
+
+    # Compile Model
+    model = Model(inputs=inputs, outputs=[category_out, severity_out])
+
+    # We use sparse_categorical_crossentropy because our labels are integers (0,1,2...)
+    model.compile(
+        optimizer='adam',
+        loss={
+            'category_head': 'sparse_categorical_crossentropy',
+            'severity_head': 'sparse_categorical_crossentropy'
+        },
+        metrics={'category_head': 'accuracy', 'severity_head': 'accuracy'}
+    )
+
+    return model
+
+# Initialize the model
+model = build_dual_head_model(input_dim=X_train.shape[1])
+model.summary()
+
+# 1. Wrapper function to isolate the Category Head for SHAP
+def predict_category(x):
+    # model.predict returns [category_predictions, severity_predictions]
+    # We only want the first item [0] for this plot
+    return model.predict(x, verbose=0)[0]
+
+# 2. Initialize Explainer
+print("Summarizing background data...")
+background = shap.kmeans(X_train, 50)
+explainer = shap.KernelExplainer(predict_category, background)
+
+# 3. Calculate SHAP values for the test set
+print("Calculating SHAP values...")
+shap_values = explainer.shap_values(X_test[:50]) # Using first 50 to save time
+
+# 4. Plot Class 0 (Religion) Feature Impacts
+plt.figure(figsize=(10, 5))
+
+# Slice out the specific class to prevent the AssertionError!
+if isinstance(shap_values, list):
+    class_shap = shap_values[0]
+else:
+    class_shap = shap_values[:, :, 0]
+
+shap.summary_plot(class_shap, X_test[:50])
